@@ -148,6 +148,20 @@ def test_map_rotation():
     window.test()
     window.close()
 
+def test_multiple_tilesets():
+    """
+    tmx using multiple tilesets
+    """
+    window = BasicTestWindow(
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        "Test Text",
+        "../../arcade/examples/map_multiple_tilesets.tmx"
+    )
+    window.test()
+    window.close()
+
+## collision tests ##
 def test_map_polygon_collision():
     """
     tmx with polygon collision
