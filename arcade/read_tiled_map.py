@@ -7,6 +7,8 @@ import base64
 import zlib
 import gzip
 
+from pathlib import Path
+
 from arcade.isometric import isometric_grid_to_screen
 from arcade import Sprite
 from arcade import SpriteList
