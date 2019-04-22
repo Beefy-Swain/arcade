@@ -272,7 +272,8 @@ def read_tiled_map(tmx_file: str, scaling) -> TiledMap:
         if encoding == "csv":
             layer_grid_ints = _process_csv_encoding(data_text)
         elif encoding == "base64":
-            layer_grid_ints = _process_base64_encoding(data_text, compression, layer_width)
+            layer_grid_ints = _process_base64_encoding(
+                data_text, compression, layer_width)
         else:
             print(f"Error, unexpected encoding: {encoding}.")
             break
