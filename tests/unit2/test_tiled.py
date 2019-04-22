@@ -148,6 +148,7 @@ def test_map_rotation():
     window.test()
     window.close()
 
+@pytest.mark.xfail
 def test_multiple_tilesets():
     """
     tmx using multiple tilesets

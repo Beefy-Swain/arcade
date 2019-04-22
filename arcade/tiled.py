@@ -15,6 +15,27 @@ from arcade import Sprite
 from arcade import SpriteList
 
 
+class EncodingError(Exception):
+    """
+    Tmx layer encoding is of an unknown type.
+    """
+    pass
+
+
+class TileNotFoundError(Exception):
+    """
+    Tile not found in tileset.
+    """
+    pass
+
+
+class ImageNotFoundError(Exception):
+    """
+    Image not found.
+    """
+    pass
+
+
 tiled_map_fields = (
     "parent_dir",
     "global_tileset",
@@ -275,8 +296,7 @@ def read_tiled_map(tmx_file: str, scaling) -> TiledMap:
             layer_grid_ints = _process_base64_encoding(
                 data_text, compression, layer_width)
         else:
-            print(f"Error, unexpected encoding: {encoding}.")
-            break
+            raise EncodingError(f"Error, unexpected encoding: {encoding}.")
 
         # Great, we have a grid of ints. Save that according to the layer name
         layers_int_data[layer_tag.attrib["name"]] = layer_grid_ints
@@ -290,7 +310,9 @@ def read_tiled_map(tmx_file: str, scaling) -> TiledMap:
                     key = str(layer_grid_ints[row_index][column_index])
 
                     if key not in global_tileset:
-                        print(f"Warning, tried to load '{key}' and it is not in the tileset.")
+                        raise TileNotFoundError(
+                            f"Error, tried to load '{key}' and it is not in"
+                            " the tileset.")
                     else:
                         tile = global_tileset[key]
 
@@ -334,7 +356,7 @@ def generate_sprites(map_object, layer_name, scaling, base_directory=""):
     sprite_list = SpriteList()
 
     if layer_name not in map_object.layers_int_data:
-        print(f"Warning, no layer named '{layer_name}'.")
+        raise ValueError(f"Error, no layer named '{layer_name}'.")
         return sprite_list
 
     map_array = map_object.layers_int_data[layer_name]
@@ -354,6 +376,6 @@ def generate_sprites(map_object, layer_name, scaling, base_directory=""):
                     my_sprite.set_points(tile_info.points)
                 sprite_list.append(my_sprite)
             elif item != 0:
-                print(f"Warning, could not find {item} image to load.")
+                raise print(f"Error, could not find {item} image to load.")
 
     return sprite_list
