@@ -193,3 +193,18 @@ def test_map_rectangle_collision():
     window.test(frames=20)
     assert (window.player_sprite.center_y == 575), "Did not collide correctly"
     window.close()
+
+@pytest.mark.xfail
+def test_map_insertion_point():
+    """
+    tmx with insertion point
+    TODO: find out why this passes, find out how to test it
+    """
+    window = CollisionTestWindow(
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        "Test Text",
+        "../../arcade/examples/map_insertion_point.tmx"
+    )
+    window.test()
+    window.close()
