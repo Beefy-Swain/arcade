@@ -162,6 +162,20 @@ def test_map_multiple_tilesets():
     window.test()
     window.close()
 
+@pytest.mark.xfail
+def test_map_opacity():
+    """
+    tmx transparent layers
+    """
+    window = BasicTestWindow(
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        "Test Text",
+        "../../arcade/examples/map_opacity.tmx"
+    )
+    window.test()
+    window.close()
+
 ## spritesheet test ##
 @pytest.mark.xfail
 def test_map_spritesheet():
