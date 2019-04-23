@@ -7,7 +7,7 @@ import base64
 import gzip
 import zlib
 
-from collections import namedtuple
+from typing import NamedTuple
 from pathlib import Path
 
 from arcade.isometric import isometric_grid_to_screen
@@ -36,29 +36,13 @@ class ImageNotFoundError(Exception):
     pass
 
 
-tiled_map_fields = (
-    "parent_dir",
-    "global_tileset",
-    "layers_int_data",
-    "layers",
-    "version",
-    "orientation",
-    "renderorder",
-    "width",
-    "height",
-    "tilewidth",
-    "tileheight",
-    "backgroundcolor",
-    "nextobjectid",
-)
 # wrap the namedtuple in a class so that sphinx generates docs for it
-class TiledMap(namedtuple("TiledMap", tiled_map_fields)):
+class TiledMap(NamedTuple):
     """
     Namedtuple for a tiled mape, and tileset from the map
     Attributes:
         :parent_dir: The logical parent of the tmx_file.
         :global_tileset: Dict of tilesets used by tmx.
-        :layers_int_data: FIXME: unsure
         :layers: Dict containing each layer.
         :version: The TMX format version.
         :orientation: Map orientation. Tiled supports “orthogonal”, \
@@ -72,12 +56,23 @@ class TiledMap(namedtuple("TiledMap", tiled_map_fields)):
         :backgroundcolor: The background color of the map.
         :nextobjectid: Stores the next available ID for new objects.
     """
-TiledMap.__new__.__defaults__ = (None,) * len(TiledMap._fields)
+    parent_dir: str
+    global_tileset: dict
+    layers_int_data: dict
+    version: str
+    orientation: str
+    renderorder: str
+    width: int
+    height: int
+    tilewidth: int
+    tileheight: int
+    backgroundcolor: tuple
+    nextobjectid: int
 
 
 tile_fields = ("gid", "tilewidth", "tileheight", "source", "points")
 # wrap the namedtuple in a class so that sphinx generates docs for it
-class Tile(namedtuple("Tile", tile_fields)):
+class Tile(NamedTuple):
     """
     Namedtuple for an individual tile from a tilesetself.
     Attributes:
@@ -89,12 +84,17 @@ class Tile(namedtuple("Tile", tile_fields)):
         :source: Image source location of tile.
         :points: List of points to use for collision.
     """
-Tile.__new__.__defaults__ = (None,) * len(Tile._fields)
+    gid: int
+    tilewidth: int
+    tileheight: int
+    source: str
+    points: str
+
 
 # namedtuple represents a location on the grid
 grid_location_fields = ("tile", "center_x", "center_y")
 # wrap the namedtuple in a class so that sphinx generates docs for it
-class GridLocation(namedtuple("GridLocation", grid_location_fields)):
+class GridLocation(NamedTuple):
     """
     Namedtuple for an x/y location and the tile ID that is in it.
     Attributes:
@@ -102,7 +102,10 @@ class GridLocation(namedtuple("GridLocation", grid_location_fields)):
         :center_x: X coordinate of the center of this tile.
         :center_y: Y coordinate of the center of this tile.
     """
-GridLocation.__new__.__defaults__ = (None,) * len(GridLocation._fields)
+    tile: int = None
+    center_x: int = None
+    center_y: int = None
+
 
 def _process_csv_encoding(data_text):
     layer_grid_ints = []
@@ -114,6 +117,7 @@ def _process_csv_encoding(data_text):
         line_list_int = [int(item) for item in line_list]
         layer_grid_ints.append(line_list_int)
     return layer_grid_ints
+
 
 def _process_base64_encoding(data_text, compression, layer_width):
     layer_grid_ints = [[]]
@@ -147,14 +151,34 @@ def _process_base64_encoding(data_text, compression, layer_width):
     layer_grid_ints.pop()
     return layer_grid_ints
 
+def _decode_layer(data_tag, layer_width):
+    # Unzip and unencode each layer
+    data_text = data_tag.text.strip()
+    encoding = data_tag.attrib['encoding']
+    if 'compression' in data_tag.attrib:
+        compression = data_tag.attrib['compression']
+    else:
+        compression = None
+
+    if encoding == "csv":
+        layer_grid_ints = _process_csv_encoding(data_text)
+    elif encoding == "base64":
+        layer_grid_ints = _process_base64_encoding(
+            data_text, compression, layer_width)
+    else:
+        raise EncodingError(f"Error, unexpected encoding: {encoding}.")
+
+    return layer_grid_ints
+
+
 def _parse_points(point_text: str):
     result = []
     point_list = point_text.split(" ")
     for point in point_list:
         z = point.split(",")
         result.append([round(float(z[0])), round(float(z[1]))])
-
     return result
+
 
 def _parse_tsx(parent_dir, tileset_tag_list, scaling=1):
     """
@@ -222,6 +246,22 @@ def _parse_tsx(parent_dir, tileset_tag_list, scaling=1):
             global_tileset[key] = my_tile
     return global_tileset
 
+
+def _get_background_color(map_tag):
+    if "backgroundcolor" in map_tag.attrib:
+        # Decode the background color string
+        backgroundcolor_string = map_tag.attrib["backgroundcolor"]
+        red_hex = "0x" + backgroundcolor_string[1:3]
+        green_hex = "0x" + backgroundcolor_string[3:5]
+        blue_hex = "0x" + backgroundcolor_string[5:7]
+        red = int(red_hex, 16)
+        green = int(green_hex, 16)
+        blue = int(blue_hex, 16)
+        return (red, green, blue)
+    else:
+        return None
+
+
 def read_tiled_map(tmx_file: str, scaling) -> TiledMap:
     """
     Given a tmx_file, this will read in a tiled map, and return
@@ -246,118 +286,45 @@ def read_tiled_map(tmx_file: str, scaling) -> TiledMap:
     # Root node should be 'map'
     map_tag = tree.getroot()
 
-    # Pull attributes that should be in the file for the map
-    layers_int_data = {}
-    layers = {}
-    version = map_tag.attrib["version"]
-    orientation = map_tag.attrib["orientation"]
-    renderorder = map_tag.attrib["renderorder"]
-    width = int(map_tag.attrib["width"])
-    height = int(map_tag.attrib["height"])
-    tilewidth = int(map_tag.attrib["tilewidth"])
-    tileheight = int(map_tag.attrib["tileheight"])
-
-    # Background color is optional, and may or may not be in there
-    if "backgroundcolor" in map_tag.attrib:
-        # Decode the background color string
-        backgroundcolor_string = map_tag.attrib["backgroundcolor"]
-        red_hex = "0x" + backgroundcolor_string[1:3]
-        green_hex = "0x" + backgroundcolor_string[3:5]
-        blue_hex = "0x" + backgroundcolor_string[5:7]
-        red = int(red_hex, 16)
-        green = int(green_hex, 16)
-        blue = int(blue_hex, 16)
-        backgroundcolor = (red, green, blue)
-    else:
-        backgroundcolor = None
-
+    #FIXME: this does not work for multiple tilesets
+    #FIXME: for loop should be outside of _parse_tsx
+    #FIXME: xml support
     tileset_tag_list = map_tag.findall('./tileset')
     global_tileset = _parse_tsx(parent_dir, tileset_tag_list)
 
-    # --- Map Data ---
-
-    # Grab each layer
     layer_tag_list = map_tag.findall('./layer')
+    layers_int_data = {}
     for layer_tag in layer_tag_list:
         layer_width = int(layer_tag.attrib['width'])
-
-        # Unzip and unencode each layer
-        data = layer_tag.find("data")
-        data_text = data.text.strip()
-        encoding = data.attrib['encoding']
-        if 'compression' in data.attrib:
-            compression = data.attrib['compression']
-        else:
-            compression = None
-
-        if encoding == "csv":
-            layer_grid_ints = _process_csv_encoding(data_text)
-        elif encoding == "base64":
-            layer_grid_ints = _process_base64_encoding(
-                data_text, compression, layer_width)
-        else:
-            raise EncodingError(f"Error, unexpected encoding: {encoding}.")
-
-        # Great, we have a grid of ints. Save that according to the layer name
+        data_tag = layer_tag.find("data")
+        layer_grid_ints = _decode_layer(data_tag, layer_width)
         layers_int_data[layer_tag.attrib["name"]] = layer_grid_ints
 
-        # Now create grid objects for each tile
         layer_grid_objs = []
         for row_index, row in enumerate(layer_grid_ints):
             layer_grid_objs.append([])
-            for column_index, column in enumerate(row):
-                if layer_grid_ints[row_index][column_index] != 0:
-                    key = str(layer_grid_ints[row_index][column_index])
 
-                    if key not in global_tileset:
-                        raise TileNotFoundError(
-                            f"Error, tried to load '{key}' and it is not in"
-                            " the tileset.")
-                    else:
-                        tile = global_tileset[key]
-
-                        if renderorder == "right-down":
-                            adjusted_row_index = height - row_index - 1
-                        else:
-                            adjusted_row_index = row_index
-
-                        if orientation == "orthogonal":
-                            center_x = column_index * tilewidth + tilewidth // 2
-                            center_y = adjusted_row_index * tileheight + tilewidth // 2
-                        else:
-                            center_x, center_y = isometric_grid_to_screen(column_index,
-                                                                          row_index,
-                                                                          width,
-                                                                          height,
-                                                                          tilewidth,
-                                                                          tileheight)
-                    layer_grid_objs[row_index].append(GridLocation(tile, center_x, center_y))
-                else:
-                    layer_grid_objs[row_index].append(GridLocation())
-
-        layers[layer_tag.attrib["name"]] = layer_grid_objs
     return TiledMap(
-        parent_dir,
-        global_tileset,
-        layers_int_data,
-        layers,
-        version,
-        orientation,
-        renderorder,
-        width,
-        height,
-        tilewidth,
-        tileheight,
-        backgroundcolor,
-        map_tag.attrib["nextobjectid"],
+        parent_dir=parent_dir,
+        global_tileset=global_tileset,
+        layers_int_data=layers_int_data,
+        version=map_tag.attrib["version"],
+        orientation=map_tag.attrib["orientation"],
+        renderorder=map_tag.attrib["renderorder"],
+        width=int(map_tag.attrib["width"]),
+        height=int(map_tag.attrib["height"]),
+        tilewidth=int(map_tag.attrib["tilewidth"]),
+        tileheight=int(map_tag.attrib["tileheight"]),
+        backgroundcolor=_get_background_color(map_tag),
+        nextobjectid=map_tag.attrib["nextobjectid"],
     )
 
 def generate_sprites(map_object, layer_name, scaling, base_directory=""):
     sprite_list = SpriteList()
 
+    # it is an error to not be given a valid layer_name
     if layer_name not in map_object.layers_int_data:
         raise ValueError(f"Error, no layer named '{layer_name}'.")
-        return sprite_list
 
     map_array = map_object.layers_int_data[layer_name]
 
@@ -366,9 +333,9 @@ def generate_sprites(map_object, layer_name, scaling, base_directory=""):
         for column_index, item in enumerate(row):
             if str(item) in map_object.global_tileset:
                 tile_info = map_object.global_tileset[str(item)]
-                tmx_file = base_directory + tile_info.source
+                image_file = base_directory + tile_info.source
 
-                my_sprite = Sprite(tmx_file, scaling)
+                my_sprite = Sprite(image_file, scaling)
                 my_sprite.right = column_index * (map_object.tilewidth * scaling)
                 my_sprite.top = (map_object.height - row_index) * (map_object.tileheight * scaling)
 
@@ -376,6 +343,7 @@ def generate_sprites(map_object, layer_name, scaling, base_directory=""):
                     my_sprite.set_points(tile_info.points)
                 sprite_list.append(my_sprite)
             elif item != 0:
-                raise print(f"Error, could not find {item} image to load.")
+                raise ImageNotFoundError(
+                    f"Error, could not find {item} image to load.")
 
     return sprite_list
