@@ -149,7 +149,7 @@ def test_map_rotation():
     window.close()
 
 @pytest.mark.xfail
-def test_multiple_tilesets():
+def test_map_multiple_tilesets():
     """
     tmx using multiple tilesets
     """
@@ -158,6 +158,21 @@ def test_multiple_tilesets():
         SCREEN_HEIGHT,
         "Test Text",
         "../../arcade/examples/map_multiple_tilesets.tmx"
+    )
+    window.test()
+    window.close()
+
+## spritesheet test ##
+@pytest.mark.xfail
+def test_map_spritesheet():
+    """
+    tmx using a spritesheet
+    """
+    window = BasicTestWindow(
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        "Test Text",
+        "../../arcade/examples/map_map_spritesheet.tmx"
     )
     window.test()
     window.close()
@@ -205,6 +220,20 @@ def test_map_insertion_point():
         SCREEN_HEIGHT,
         "Test Text",
         "../../arcade/examples/map_insertion_point.tmx"
+    )
+    window.test()
+    window.close()
+
+@pytest.mark.xfail
+def test_map_elipse():
+    """
+    tmx with elipse collision
+    """
+    window = CollisionTestWindow(
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        "Test Text",
+        "../../arcade/examples/map_elipse.tmx"
     )
     window.test()
     window.close()
