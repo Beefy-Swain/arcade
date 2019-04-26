@@ -5,8 +5,8 @@ Functions and classes for managing a map created in the "Tiled Map Editor"
 import functools
 import re
 
-from pathlib import Path
 from collections import OrderedDict
+from pathlib import Path
 
 import xml.etree.ElementTree as etree
 
@@ -39,6 +39,10 @@ class Color:
     """
     def __init__(self, value: str):
         pass
+
+
+class Template:
+    pass
 
 
 class Image:
@@ -122,7 +126,7 @@ class Properties(Dict[str, Union[str, int, float, bool, Color, Path]]):
             parsed.
         """
 
-    def add(self, name: str, property_type: str, value: str):
+    def _add_property(self, name: str, property_type: str, value: str):
         """
         Adds Tiled property to Properties dict.
 
@@ -155,7 +159,7 @@ class Properties(Dict[str, Union[str, int, float, bool, Color, Path]]):
             name = property.attrib['name']
             property_type = property.attrib['type']
             value = property.attrib['value']
-            properties.add(name, property_type, value)
+            self._add_property(name, property_type, value)
 
 
 class Grid(NamedTuple):
@@ -384,7 +388,8 @@ class Tile(NamedTuple):
     type: Union[None, str]
     terrain: Union[None, TileTerrain]
     animation: Union[None, List[Frame]]
-    image: Union[Image, None]
+    image: Union[None, Image]
+    object_group: Union[None, ObjectGroup]
 
 
 class TileSet(NamedTuple):
@@ -434,13 +439,95 @@ class TileSet(NamedTuple):
     tiles: Union[None, Dict[int, Tile]]
 
 
-class TileMap():
+class Layer:
+    """
+    Map layer object.
+
+    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#layer
+
+    Attributes:
+        :id (int): Unique ID of the layer. Each layer that added to a map \
+        gets a unique id. Even if a layer is deleted, no layer ever gets \
+        the same ID.
+        :name (str): The name of the layer.
+        :width (int): The width of the layer in tiles. Always the same as \
+        the map width for fixed-size maps.
+        :height (int): The height of the layer in tiles. Always the same as \
+        the map height for fixed-size maps.
+        :opacity (int): The opacity of the layer as a value from 0 to 1. \
+        Defaults to 1. FIXME
+        :visible (bool): Whether the layer is shown (True) or hidden \
+        (False). Defaults to True.
+        :offset_x (int): Rendering offset for this layer in pixels. Defaults \
+        to 0.
+        :offset_y (int): Rendering offset for this layer in pixels. Defaults \
+        to 0.
+        :layer_data (List[List(int)]): The global tile IDs in according to \
+        row.
+    """
+    def __init__(self):
+        self.id: int
+        self.name: str
+        self.width: int
+        self.height: int
+        self.opacity: int
+        self.visible: bool
+        self.offset_x: int
+        self.offset_y: int
+        self.data: Data
+
+
+class Chunk(NamedTuple):
+    """
+    Chunk object for infinite maps.
+
+    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#chunk
+
+    Attributes:
+        :x (int): The x coordinate of the chunk in tiles.
+        :y (int): The y coordinate of the chunk in tiles.
+        :width (int): The width of the chunk in tiles.
+        :height (int): The height of the chunk in tiles.
+        :layer_data (List[List(int)]): The global tile IDs in chunk \
+        according to row.
+    """
+    x: int
+    y: int
+    width: int
+    height: int
+    layer_data: List[List[int]]
+
+
+class Data:
+    """
+    Object for the Data of a Layer.
+
+    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#data
+
+    Attributes:
+        :encoding (str): The encoding used to encode the tile layer data. \
+        Either “base64” and “csv”.
+        :compression (Union[None, str]): The compression used to compress \
+        the tile layer data. Either “gzip”, “zlib”, or None.
+        :layer_data (Union[None, List[List[int]]]): The global tile IDs in \
+        chunk according to row.
+        :chunks (Union[List[Chunk]]): List of chunks, for infinite maps.
+    """
+    def __init__(self):
+        # FIXME
+        self.encoding: str
+        self.compression: str
+        self.layer_data: Union[None, List[List[int]]]
+        self.chunks: Union[None, List[Chunk]]
+
+
+class TileMap:
     """
     Object for storing a TMX with all associated layers and properties.
 
-    The attributes below are nearly identical to the TMX spec as per\
-    https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#map
-    Tiled Attributes:
+    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#map
+
+    Attributes:
         :version (str): The TMX format version.
         :tiledversion (str): The Tiled version used to save the file. May be \
         a date (for snapshot builds).
@@ -465,19 +552,15 @@ class TileMap():
         :backgroundcolor (##FIXME##): The background color of the map.
         :nextlayerid (int): Stores the next available ID for new layers.
         :nextobjectid (int): Stores the next available ID for new objects.
-
-    These attributes are in addition to the TMX specified attributes.
-    Attributes:
         :tile_sets (dict[str, TileSet]): Dict of tile sets used \
         in this map. Key is the source for external tile sets or the name \
         for embedded ones. The value is a TileSet object.
         :layers (dict[str, ##FIXME##]): Dict of layers.
     """
-    def __init__(self):
+    def __init__(self, tmx_file: Union[str, Path]):
         """
-        Initialization for TileMapXML object.
+        Initialization for TileMap object.
         """
-        # TMX spec attributes
         self.version: str
         self.tiledversion: str
         self.orientation: str
@@ -486,15 +569,51 @@ class TileMap():
         self.height: int
         self.tilewidth: int
         self.tileheight: int
-        self.hexsidelength: int
-        self.staggeraxis: int
-        self.staggerindex: int
-        self.backgroundcolor: str
+        self.hexsidelength: Union[None, int]
+        self.staggeraxis: Union[None, int]
+        self.staggerindex: Union[None, int]
+        self.backgroundcolor: Union[None, str]
         self.nextlayerid: int
         self.nextobjectid: int
 
-        # tiled.py attributes
-        self.tile_sets: OrderedDict[int, TileSet] = OrderedDict
+        self.properties: Union[None, Properties]
+        self.tile_sets: OrderedDict[int, TileSet]
+        self.layers: List[Layer, ObjectGroup, Group]
+
+        self._import_tmx_file(tmx_file)
+
+    def _import_tmx_file(self, tmx_file: Union[str, Path]):
+        self.tile_sets = OrderedDict()
+
+        self.parent_dir = Path(tmx_file).parent
+
+        map_tree = etree.parse(str(tmx_file))
+        map_element = map_tree.getroot()
+
+        # parse all tilesets
+        tile_set_element_list = map_element.findall('./tileset')
+        self.tile_sets = OrderedDict()
+        for tile_set_element in tile_set_element_list:
+            # tiled docs are ambiguous about the 'firstgid' attribute
+            # current understanding is for the purposes of mapping the layer
+            # data to the tile set data, add the 'firstgid' value to each
+            # tile 'id'; this means that the 'firstgid' is specific to each,
+            # tile set as they pertain to the map, not tile set specific as
+            # the tiled docs can make it seem
+            # 'firstgid' is saved beside each TileMapXML
+            firstgid = int(tile_set_element.attrib['firstgid'])
+            try:
+                # check if is an external TSX
+                source = tile_set_element.attrib['source']
+            except KeyError:
+                # the tile set in embedded
+                name = tile_set_element.attrib['name']
+                self.tile_sets[firstgid] = _parse_tile_set(
+                    tile_set_element)
+            else:
+                # tile set is external
+                self.tile_sets[firstgid] = _parse_external_tile_set(
+                    self.parent_dir, tile_set_element)
 
 
 def _parse_tiles(tile_element_list: List[etree.Element]) -> Dict[int, Tile]:
@@ -561,7 +680,21 @@ def _parse_tiles(tile_element_list: List[etree.Element]) -> Dict[int, Tile]:
         else:
             tile_image = Image(tile_image_element)
 
-        tiles[id] = Tile(id, type, tile_terrain, animation, tile_image)
+        object_group = None
+        try:
+            tile_object_group_element = tile_element.find('./objectgroup')
+            assert tile_object_group_element is not None
+        except AssertionError:
+            pass
+        else:
+            object_group = ObjectGroup(tile_object_group_element)
+
+        tiles[id] = Tile(id,
+                         type,
+                         tile_terrain,
+                         animation,
+                         tile_image,
+                         object_group)
 
     return tiles
 
@@ -630,12 +763,7 @@ def _parse_tile_set(tile_set_element: etree.Element) -> TileSet:
     except AssertionError:
         pass
     else:
-        properties = Properties()
-        for property in properties_element.findall('./property'):
-            name = property.attrib['name']
-            property_type = property.attrib['type']
-            value = property.attrib['value']
-            properties.add(name, property_type, value)
+        properties = Properties(properties_element)
 
     terraintypes: Union[None, List[Terrain]] = None
     try:
@@ -682,65 +810,15 @@ def _parse_tile_set(tile_set_element: etree.Element) -> TileSet:
 @functools.lru_cache()
 def _parse_external_tile_set(
         parent_dir: Path, tile_set_element: etree.Element) -> TileSet:
+    """
+    Parses an external tile set.
+
+    Caches the results to speed up subsequent instances.
+    """
     source = Path(tile_set_element.attrib['source'])
     tile_set_tree = etree.parse(str(parent_dir / Path(source))).getroot()
 
     return _parse_tile_set(tile_set_tree)
-
-
-class Tiled():
-    """
-    Controller object for importing TMX files.
-
-    Handles importing TMX files and resolving TSX files.
-    """
-    def import_tmx(self, tmx_file: Union[str, Path]) -> TileMap:
-        """
-        Imports a TMX file and returns a TileMapXML object
-
-        In addition to importing and returning a tile map, it also adds
-        the map to the maps dict and any tile sets to the external_tile_sets dict
-        to be re-used by any other maps that specify them.
-
-        Args:
-            :tmx_file (str, Path): Path of the TMX file to import.
-
-        Returns:
-            :TileMapXML: Returns TileMapXML object.
-        """
-        # for finding relative paths of TSX and image files
-        parent_dir = Path(tmx_file).parent
-
-        map_tree = etree.parse(str(tmx_file))
-        map_element = map_tree.getroot()
-
-        tile_set_element_list = map_element.findall('./tileset')
-
-        tile_map = TileMap()
-        tile_map.tile_sets = OrderedDict()
-
-        for tile_set_element in tile_set_element_list:
-            # tiled docs are ambiguous about the 'firstgid' attribute
-            # current understanding is for the purposes of mapping the layer
-            # data to the tile set data, add the 'firstgid' value to each
-            # tile 'id'; this means that the 'firstgid' is specific to each,
-            # tile set as they pertain to the map, not tile set specific as
-            # the tiled docs can make it seem
-            # 'firstgid' is saved beside each TileMapXML
-            firstgid = int(tile_set_element.attrib['firstgid'])
-            try:
-                # check if is an external TSX
-                source = tile_set_element.attrib['source']
-            except KeyError:
-                # the tile set in embedded
-                name = tile_set_element.attrib['name']
-                tile_map.tile_sets[firstgid] = _parse_tile_set(tile_set_element)
-            else:
-                # tile set is external
-                tile_map.tile_sets[firstgid] = _parse_external_tile_set(
-                    parent_dir, tile_set_element)
-
-        return tile_map
 
 
 
