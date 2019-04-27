@@ -1,253 +1,48 @@
 import os
-import arcade
-import arcade.tiled
+
+from pathlib import Path
 
 import pytest
 
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+import arcade.tiled
 
-SPRITE_SCALING = 1
-GRAVITY = 1.1
+print(os.path.dirname(os.path.abspath(__file__)))
 
-class BasicTestWindow(arcade.Window):
-
-    def __init__(self, width, height, title, map_name):
-        super().__init__(width, height, title)
-        file_path = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(file_path)
-
-        self.layers = []
-        my_map = arcade.tiled.read_tiled_map(map_name, 1)
-        for layer in my_map.layers:
-            self.layers.append(arcade.tiled.generate_sprites(
-                my_map, layer, 1, "../../arcade/examples/"))
-
-    def on_draw(self):
-        arcade.start_render()
-        for layer in self.layers:
-            layer.draw()
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
-class CollisionTestWindow(BasicTestWindow):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.player_list = arcade.SpriteList()
-        self.player_sprite = arcade.Sprite(
-            "../../arcade/examples/images/character.png", SPRITE_SCALING)
-        self.player_sprite.center_x = 400
-        self.player_sprite.center_y = 800
-        self.player_list.append(self.player_sprite)
 
-        self.physics_engine = arcade.PhysicsEnginePlatformer(
-            self.player_sprite, self.layers[0], gravity_constant=GRAVITY)
+def test_map_simple():
+    """
+    TMX with a very simple tileset and some properties.
+    """
+    map = arcade.tiled.TileMap(Path("../test_data/test_map_simple.tmx"))
 
-    def on_draw(self):
-        super().on_draw()
-        self.player_list.draw()
+    properties = {
+        "bool property - false": False,
+        "bool property - true": True,
+        "color property": (0x49, 0xfc, 0xff, 0xff),
+        "file property": Path("/var/log/syslog"),
+        "float property": 1.23456789,
+        "int property": 13,
+        "string property": "Hello, World!!"
+    }
 
-    def update(self, delta_time):
-        self.physics_engine.update()
-
-
-## embedded multi-file tilesets ##
-def test_map_csv():
-    """
-    tmx saved with csv formatted layer data
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_csv.tmx"
-    )
-    window.test()
-    window.close()
-
-# no current support for XML map format
-@pytest.mark.xfail
-def test_map_xml():
-    """
-    tmx saved with xml formatted layer data
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_xml.tmx"
-    )
-    window.test()
-    window.close()
-
-def test_map_base64():
-    """
-    tmx saved with base64 encoded layer data
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_base64.tmx"
-    )
-    window.test()
-    window.close()
-
-def test_map_base64_gzip():
-    """
-    tmx saved with gzip compressed base64 encoded layer data
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_base64_gzip.tmx"
-    )
-    window.test()
-    window.close()
-
-def test_map_base64_zlib():
-    """
-    tmx saved with zlib compressed base64 encoded layer data
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_base64_zlib.tmx"
-    )
-    window.test()
-    window.close()
-
-## external multi-file tilesets ##
-def test_map_external_tileset():
-    """
-    tmx using external tileset
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_external_tileset.tmx"
-    )
-    window.test()
-    window.close()
-
-# rotation is not supported yet
-# https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#tile-flipping
-@pytest.mark.xfail
-def test_map_rotation():
-    """
-    tmx with rotated tiles in it's layers
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_rotation.tmx"
-    )
-    window.test()
-    window.close()
-
-@pytest.mark.xfail
-def test_map_multiple_tilesets():
-    """
-    tmx using multiple tilesets
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_multiple_tilesets.tmx"
-    )
-    window.test()
-    window.close()
-
-@pytest.mark.xfail
-def test_map_opacity():
-    """
-    tmx transparent layers
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_opacity.tmx"
-    )
-    window.test()
-    window.close()
-
-## spritesheet test ##
-@pytest.mark.xfail
-def test_map_spritesheet():
-    """
-    tmx using a spritesheet
-    """
-    window = BasicTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_map_spritesheet.tmx"
-    )
-    window.test()
-    window.close()
-
-## collision tests ##
-def test_map_polygon_collision():
-    """
-    tmx with polygon collision
-    window.player_sprite should collide at Y 575
-    """
-    window = CollisionTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_polygon_collision.tmx"
-    )
-    window.test(frames=20)
-    assert (window.player_sprite.center_y == 575), "Did not collide correctly"
-    window.close()
-
-@pytest.mark.xfail
-def test_map_rectangle_collision():
-    """
-    tmx with polygon collision
-    window.player_sprite should collide at Y 575
-    """
-    window = CollisionTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_rectangle_collision.tmx"
-    )
-    window.test(frames=20)
-    assert (window.player_sprite.center_y == 575), "Did not collide correctly"
-    window.close()
-
-@pytest.mark.xfail
-def test_map_insertion_point():
-    """
-    tmx with insertion point
-    TODO: find out why this passes, find out how to test it
-    """
-    window = CollisionTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_insertion_point.tmx"
-    )
-    window.test()
-    window.close()
-
-@pytest.mark.xfail
-def test_map_elipse():
-    """
-    tmx with elipse collision
-    """
-    window = CollisionTestWindow(
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        "Test Text",
-        "../../arcade/examples/map_elipse.tmx"
-    )
-    window.test()
-    window.close()
+    assert map.version == "1.2"
+    assert map.tiledversion == "1.2.3"
+    assert map.orientation == "orthogonal"
+    assert map.renderorder == "right-down"
+    assert map.width == 8
+    assert map.height == 6
+    assert map.tilewidth == 32
+    assert map.tileheight == 32
+    assert map.infinite == False
+    assert map.hexsidelength == None
+    assert map.staggeraxis == None
+    assert map.staggerindex == None
+    assert map.backgroundcolor == None
+    assert map.nextlayerid == 2
+    assert map.nextobjectid == 1
+    assert map.properties == properties
+    # assert map.tile_sets ==
+    # assert map.layers ==

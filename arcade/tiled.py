@@ -31,14 +31,43 @@ class ImageNotFoundError(Exception):
     """
 
 
-class Color:
+class Color(NamedTuple):
     """
-    NamedTuple representing a color with alpha.
+    Color object.
 
-    FIXME: idk wtf I'm doing here
+    Attributes:
+        :r (int): Red, between 1 and 255.
+        :g (int): Green, between 1 and 255.
+        :b (int): Blue, between 1 and 255.
+        :a (int): Alpha, between 1 and 255.
     """
-    def __init__(self, value: str):
-        pass
+    r: int
+    g: int
+    b: int
+    a: int
+
+
+def _parse_color(color: str) -> Color:
+    """
+    Converts the color formats that Tiled uses into ones that Arcade accepts.
+    """
+    # strip initial '#' character
+    if not len(color) % 2 == 0:
+        color = color[1:]
+
+    if len(color) == 6:
+        # full opacity if no alpha specified
+        a = 0xFF
+        r = int(color[0:2], 16)
+        g = int(color[2:4], 16)
+        b = int(color[4:6], 16)
+    else:
+        a = int(color[0:2], 16)
+        r = int(color[2:4], 16)
+        g = int(color[4:6], 16)
+        b = int(color[6:8], 16)
+
+    return Color(r, g, b, a)
 
 
 class Template:
@@ -88,7 +117,7 @@ class Image:
 
         self.trans = None
         try:
-            self.trans = Color(image_element.attrib['trans'])
+            self.trans = _parse_color(image_element.attrib['trans'])
         except KeyError:
             pass
 
@@ -117,7 +146,7 @@ class Properties(Dict[str, Union[str, int, float, bool, Color, Path]]):
     https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#properties \
     for more info.
     """
-    def __init__(self, properties_element: Union[None, etree.Element] = None):
+    def __init__(self, properties_element: etree.Element):
         """
         Initializes Properties Object and parses proprties element if given.
 
@@ -125,6 +154,16 @@ class Properties(Dict[str, Union[str, int, float, bool, Color, Path]]):
             :properties_element (etree.Element): Properties element to be \
             parsed.
         """
+        for property in properties_element.findall('./property'):
+            name = property.attrib['name']
+            try:
+                property_type = property.attrib['type']
+            except KeyError:
+                # strings do not have an attribute in property elements
+                property_type = 'string'
+            value = property.attrib['value']
+            self._add_property(name, property_type, value)
+
 
     def _add_property(self, name: str, property_type: str, value: str):
         """
@@ -136,13 +175,15 @@ class Properties(Dict[str, Union[str, int, float, bool, Color, Path]]):
             float, bool, color or file. Defaults to string.
             :value (str): The value of the property.
         """
-        types = ['string', 'float', 'bool', 'color', 'file']
+        types = ['string', 'int', 'float', 'bool', 'color', 'file']
         assert property_type in types, f"Invalid type for property {name}"
 
-        if property_type == 'float':
+        if property_type == 'int':
+            self[name] = int(value)
+        elif property_type == 'float':
             self[name] = float(value)
         elif property_type == 'color':
-            self[name] = Color(value)
+            self[name] = _parse_color(value)
         elif property_type == 'file':
             self[name] = Path(value)
         elif property_type == 'bool':
@@ -241,7 +282,76 @@ class Object(NamedTuple):
     template: Union[None, Template]
 
 
-class ObjectGroup:
+class TileTerrain(NamedTuple):
+    """
+    Defines each corner of a tile by Terrain index in \
+    'TileSetXML.terraintypes'.
+
+    Defaults to 'None'. 'None' means that corner has no terrain.
+
+    Args:
+        :top_left (Union[None, int]): Top left terrain type.
+        :top_right (Union[None, int]): Top right terrain type.
+        :bottom_left (Union[None, int]): Bottom left terrain type.
+        :bottom_right (Union[None, int]): Bottom right terrain type.
+    """
+    top_left: Union[None, int] = None
+    top_right: Union[None, int] = None
+    bottom_left: Union[None, int] = None
+    bottom_right: Union[None, int] = None
+
+
+class LayerType:
+    """
+    Class that all layer classes inherit from.
+
+    Not to be directly used.
+
+    Attributes:
+        :id (int): Unique ID of the layer. Each layer that added to a map \
+        gets a unique id. Even if a layer is deleted, no layer ever gets \
+        the same ID.
+        :name (Union[None, str):] The name of the layer object.
+        :offset_x (int): Rendering offset of the layer object in pixels. \
+        Defaults to 0.
+        :offset_y (int): Rendering offset of the layer object in pixels. \
+        Defaults to 0.
+        :opacity (int): FIXME
+        :properties (Union[None, Properties]): Properties object for layer \
+        object.
+    """
+    def __init__(self):
+        """
+        Initializes LayerType object.
+        """
+        self.id: Union[None, int]
+        self.name: Union[None, str]
+        self.offset_x: int = 0
+        self.offset_y: int = 0
+        self.opacity: int
+
+        self.properties: Union[None, Properties]
+
+
+class Layer(LayerType):
+    """
+    Map layer object.
+
+    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#layer
+
+    Attributes:
+        :width (int): The width of the layer in tiles. Always the same as \
+        the map width for fixed-size maps.
+        :height (int): The height of the layer in tiles. Always the same as \
+        the map height for fixed-size maps.
+    """
+    def __init__(self):
+        self.width: int
+        self.height: int
+        self.data: Data
+
+
+class ObjectGroup(LayerType):
     """
     Object Group Object.
 
@@ -252,24 +362,12 @@ class ObjectGroup:
     https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#objectgroup
 
     Args:
-        :id (Union[None, int):] Unique ID of the layer. Each layer that \
-        added to a map gets a unique id. Even if a layer is deleted, no \
-        layer ever gets the same ID.
-        :name (Union[None, str):] The name of the object group.
         :color (Union[None, Color]): The color used to display the objects \
         in this group.
-        :opacity (int): The opacity of the layer as a percentage.
-        :visible (bool): Whether the layer is shown (True) or hidden \
-        (False). Defaults to True.
-        :offsetx (int): Rendering offset for this object group in pixels. \
-        Defaults to 0.
-        :offsety (int): Rendering offset for this object group in pixels. \
-        Defaults to 0.
         :draworder (str): Whether the objects are drawn according to the \
         order of appearance ('index') or sorted by their y-coordinate \
-        ('topdown'). Defaults to 'topdown'.
-        :properties (Union[None, Properties]): Properties object for \
-        ObjectGroup.
+        ('topdown'). Defaults to 'topdown'. NOTE: This appears to be \
+        unsupported by the editor ?
         :objects (Dict[int, Object]): Dict Object objects by \
         Object.id.
     """
@@ -282,15 +380,8 @@ class ObjectGroup:
             :object_group_element (etree.Element): Object group element to \
             be parsed.
         """
-        self.id: Union[None, int]
-        self.name: Union[None, str]
         self.color: Union[None, Color]
-        self.opacity: int
-        self.visible: bool
-        self.offsetx: int
-        self.offsety: int
         self.draworder: str
-        self.properties: Union[None, Properties]
         self.objects: Dict[int, Object]
 
         if object_group_element:
@@ -315,7 +406,7 @@ class ObjectGroup:
 
         self.color = None
         try:
-            self.color = Color(object_group_element.attrib['color'])
+            self.color = _parse_color(object_group_element.attrib['color'])
         except KeyError:
             pass
 
@@ -351,25 +442,6 @@ class ObjectGroup:
 
         self.properties = None
         self.objects = {}
-
-
-class TileTerrain(NamedTuple):
-    """
-    Defines each corner of a tile by Terrain index in \
-    'TileSetXML.terraintypes'.
-
-    Defaults to 'None'. 'None' means that corner has no terrain.
-
-    Args:
-        :top_left (Union[None, int]): Top left terrain type.
-        :top_right (Union[None, int]): Top right terrain type.
-        :bottom_left (Union[None, int]): Bottom left terrain type.
-        :bottom_right (Union[None, int]): Bottom right terrain type.
-    """
-    top_left: Union[None, int] = None
-    top_right: Union[None, int] = None
-    bottom_left: Union[None, int] = None
-    bottom_right: Union[None, int] = None
 
 
 class Tile(NamedTuple):
@@ -439,44 +511,6 @@ class TileSet(NamedTuple):
     tiles: Union[None, Dict[int, Tile]]
 
 
-class Layer:
-    """
-    Map layer object.
-
-    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#layer
-
-    Attributes:
-        :id (int): Unique ID of the layer. Each layer that added to a map \
-        gets a unique id. Even if a layer is deleted, no layer ever gets \
-        the same ID.
-        :name (str): The name of the layer.
-        :width (int): The width of the layer in tiles. Always the same as \
-        the map width for fixed-size maps.
-        :height (int): The height of the layer in tiles. Always the same as \
-        the map height for fixed-size maps.
-        :opacity (int): The opacity of the layer as a value from 0 to 1. \
-        Defaults to 1. FIXME
-        :visible (bool): Whether the layer is shown (True) or hidden \
-        (False). Defaults to True.
-        :offset_x (int): Rendering offset for this layer in pixels. Defaults \
-        to 0.
-        :offset_y (int): Rendering offset for this layer in pixels. Defaults \
-        to 0.
-        :layer_data (List[List(int)]): The global tile IDs in according to \
-        row.
-    """
-    def __init__(self):
-        self.id: int
-        self.name: str
-        self.width: int
-        self.height: int
-        self.opacity: int
-        self.visible: bool
-        self.offset_x: int
-        self.offset_y: int
-        self.data: Data
-
-
 class Chunk(NamedTuple):
     """
     Chunk object for infinite maps.
@@ -496,6 +530,23 @@ class Chunk(NamedTuple):
     width: int
     height: int
     layer_data: List[List[int]]
+
+
+class LayerGroup(NamedTuple):
+    """
+    Object for a Layer Group.
+
+    A LayerGroup can be thought of as a layer that contains layers \
+    (potentially including other LayerGroups).
+
+    Attributes offset_x, offset_y, and opacity recursively affect child \
+    layers.
+
+    See: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/#group
+
+    Attributes:
+
+    """
 
 
 class Data:
@@ -541,6 +592,7 @@ class TileMap:
         :height (int): The map height in tiles.
         :tilewidth (int): The width of a tile.
         :tileheight (int): The height of a tile.
+        :infinite (bool): If the map is infinite or not.
         :hexsidelength (int): Only for hexagonal maps. Determines the width \
         or height (depending on the staggered axis) of the tile’s edge, in \
         pixels.
@@ -555,7 +607,8 @@ class TileMap:
         :tile_sets (dict[str, TileSet]): Dict of tile sets used \
         in this map. Key is the source for external tile sets or the name \
         for embedded ones. The value is a TileSet object.
-        :layers (dict[str, ##FIXME##]): Dict of layers.
+        :layers (OrderedDict[str, Union[Layer, ObjectGroup, LayerGroup]]): \
+        OrderedDict of layer objects by draw order.
     """
     def __init__(self, tmx_file: Union[str, Path]):
         """
@@ -569,6 +622,7 @@ class TileMap:
         self.height: int
         self.tilewidth: int
         self.tileheight: int
+        self.infinite: bool
         self.hexsidelength: Union[None, int]
         self.staggeraxis: Union[None, int]
         self.staggerindex: Union[None, int]
@@ -578,7 +632,7 @@ class TileMap:
 
         self.properties: Union[None, Properties]
         self.tile_sets: OrderedDict[int, TileSet]
-        self.layers: List[Layer, ObjectGroup, Group]
+        self.layers: OrderedDict[str, Union[Layer, ObjectGroup, LayerGroup]]
 
         self._import_tmx_file(tmx_file)
 
@@ -589,6 +643,11 @@ class TileMap:
 
         map_tree = etree.parse(str(tmx_file))
         map_element = map_tree.getroot()
+
+        self.properties = None
+        properties_element = map_tree.find('./properties')
+        if properties_element:
+            self.properties = Properties(properties_element)
 
         # parse all tilesets
         tile_set_element_list = map_element.findall('./tileset')
@@ -654,12 +713,8 @@ def _parse_tiles(tile_element_list: List[etree.Element]) -> Dict[int, Tile]:
 
         # tile element optional sub-elements
         animation: Union[None, List[Frame]] = None
-        try:
-            tile_animation_element = tile_element.find('./animation')
-            assert tile_animation_element is not None
-        except AssertionError:
-            pass
-        else:
+        tile_animation_element = tile_element.find('./animation')
+        if tile_animation_element:
             animation = []
             frames = tile_animation_element.findall('./frame')
             for frame in frames:
@@ -672,21 +727,13 @@ def _parse_tiles(tile_element_list: List[etree.Element]) -> Dict[int, Tile]:
 
         # if this is None, then the Tile is part of a spritesheet
         tile_image = None
-        try:
-            tile_image_element = tile_element.find('./image')
-            assert tile_image_element is not None
-        except AssertionError:
-            pass
-        else:
+        tile_image_element = tile_element.find('./image')
+        if tile_image_element:
             tile_image = Image(tile_image_element)
 
         object_group = None
-        try:
-            tile_object_group_element = tile_element.find('./objectgroup')
-            assert tile_object_group_element is not None
-        except AssertionError:
-            pass
-        else:
+        tile_object_group_element = tile_element.find('./objectgroup')
+        if tile_object_group_element:
             object_group = ObjectGroup(tile_object_group_element)
 
         tiles[id] = Tile(id,
@@ -734,44 +781,28 @@ def _parse_tile_set(tile_set_element: etree.Element) -> TileSet:
         pass
 
     tileoffset: Union[None, Tuple[int, int]] = None
-    try:
-        tileoffset_element = tile_set_element.find('./tileoffset')
-        assert tileoffset_element is not None
-    except AssertionError:
-        pass
-    else:
+    tileoffset_element = tile_set_element.find('./tileoffset')
+    if tileoffset_element:
         tile_offset_x = int(tileoffset_element.attrib['x'])
         tile_offset_y = int(tileoffset_element.attrib['y'])
         tile_offset = (tile_offset_x, tile_offset_y)
 
     grid = None
-    try:
-        grid_element = tile_set_element.find('./grid')
-        assert grid_element is not None
-    except AssertionError:
-        pass
-    else:
+    grid_element = tile_set_element.find('./grid')
+    if grid_element:
         grid_orientation = grid_element.attrib['orientation']
         grid_width = int(grid_element.attrib['width'])
         grid_height = int(grid_element.attrib['height'])
         grid = Grid(grid_orientation, grid_width, grid_height)
 
     properties = None
-    try:
-        properties_element = tile_set_element.find('./properties')
-        assert properties_element is not None
-    except AssertionError:
-        pass
-    else:
+    properties_element = tile_set_element.find('./properties')
+    if properties_element:
         properties = Properties(properties_element)
 
     terraintypes: Union[None, List[Terrain]] = None
-    try:
-        terraintypes_element = tile_set_element.find('./terraintypes')
-        assert terraintypes_element is not None
-    except AssertionError:
-        pass
-    else:
+    terraintypes_element = tile_set_element.find('./terraintypes')
+    if terraintypes_element:
         terraintypes = []
         for terrain in terraintypes_element.findall('./terrain'):
             name = terrain.attrib['name']
@@ -779,12 +810,8 @@ def _parse_tile_set(tile_set_element: etree.Element) -> TileSet:
             terraintypes.append(Terrain(name, terrain_tile))
 
     image = None
-    try:
-        image_element = tile_set_element.find('./image')
-        assert image_element is not None
-    except AssertionError:
-        pass
-    else:
+    image_element = tile_set_element.find('./image')
+    if image_element:
         image = Image(image_element)
 
     tile_element_list = tile_set_element.findall('./tile')
