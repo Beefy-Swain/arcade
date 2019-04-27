@@ -15,7 +15,7 @@ def test_map_simple():
     """
     TMX with a very simple tileset and some properties.
     """
-    map = arcade.tiled.TileMap(Path("../test_data/test_map_simple.tmx"))
+    map = arcade.tiled.parse_tile_map(Path("../test_data/test_map_simple.tmx"))
 
     properties = {
         "bool property - false": False,
@@ -28,20 +28,20 @@ def test_map_simple():
     }
 
     assert map.version == "1.2"
-    assert map.tiledversion == "1.2.3"
+    assert map.tiled_version == "1.2.3"
     assert map.orientation == "orthogonal"
-    assert map.renderorder == "right-down"
+    assert map.render_order == "right-down"
     assert map.width == 8
     assert map.height == 6
-    assert map.tilewidth == 32
-    assert map.tileheight == 32
+    assert map.tile_width == 32
+    assert map.tile_height == 32
     assert map.infinite == False
-    assert map.hexsidelength == None
-    assert map.staggeraxis == None
-    assert map.staggerindex == None
-    assert map.backgroundcolor == None
-    assert map.nextlayerid == 2
-    assert map.nextobjectid == 1
+    assert map.hex_side_length == None
+    assert map.stagger_axis == None
+    assert map.stagger_index == None
+    assert map.background_color == None
+    assert map.next_layer_id == 2
+    assert map.next_object_id == 1
     assert map.properties == properties
 
     assert map.tile_sets[1].name == "tile_set_image"
@@ -58,7 +58,8 @@ def test_map_simple():
     assert map.tile_sets[1].tiles == {}
 
     # unsure how to get paths to compare propperly
-    assert str(map.tile_sets[1].image.source) == "images/tmw_desert_spacing.png"
+    assert str(map.tile_sets[1].image.source) == (
+        "images/tmw_desert_spacing.png")
     assert map.tile_sets[1].image.trans == None
     assert map.tile_sets[1].image.width == 265
     assert map.tile_sets[1].image.height == 199
